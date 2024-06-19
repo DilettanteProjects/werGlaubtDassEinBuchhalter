@@ -1,17 +1,20 @@
 ver = 1.02 # Yippee!
 
 
-#%% Init stuff(Imports, const, vars)
+#%% Init stuff(Imports, const, vars; Objs further down, come after classes)
 # Imports
 ###################################
 import pathlib
 import os
+import sys
 import pickle
 import datetime
 import csv
 import copy
+# My modules
 import cursor
-import sys
+from messagecue import MessageCue
+import boxes
 ###########imprts##################
 
 
@@ -23,14 +26,17 @@ PATH = str(pathlib.Path(__file__).parent.resolve())
 
 # Variables
 ###################################
-settings = {'verboseLvl'    : 2, # 0=errs,dbg only, 1=important info, 2=chatty
-            'debug'         : False,
-            'keepSettings'  : True,
-            'sheetPath'     : PATH,
-            'autoSave'      : False,
-            'autoLoad'      : True,
-            'platform'      : 'pc',     # pc/mobile
-            'maxWidthHeight': (83, 43)  # screen space on my phone
+                                        # verboseLvl: 'Error, 'Warning',
+settings = {'verboseLvl'        : 'Debug', # 'Status, 'Verbose', 'Debug'
+            'debug'             : False,
+            'keepSettings'      : True,
+            'sheetPath'         : PATH,
+            'autoSave'          : False,
+            'autoLoad'          : True,
+            'platform'          : 'pc',     # pc/mobile
+            'maxWidthHeight'    : (83, 43),  # screen space on my phone
+            'msgWindowSize'     : 30,
+            'msgWindowSymbol'   : boxes.line.light.dashed.double.horizontal
             }
 recurring = {'Buergergeld'   : 1013.29,
              'Strom'         : -123.00,
@@ -100,26 +106,16 @@ def check_Entries_vs_BankTx(listEntries, listBankTx):
                 # For each entry already 'checked', search Txlist for tx
                 for tx in listBankTx:
                     if entry.associatedTx.comparer(tx):
-                        if settings['verboseLvl'] >= 2:
-                            print(f'Popped tx at index {listBankTx.index(tx)}')
-                        elif settings['verboseLvl'] >= 1:
-                            print('Popped tx')
+                        msgCue.add(f'Popped tx at index {listBankTx.index(tx)}',
+                                   'verbose')
                         listBankTx.pop(listBankTx.index(tx))
-                        if settings['debug']:
-                            input('continue...')
                         break
-                    elif settings['verboseLvl'] >= 2:
-                        print(f'Searching...({listBankTx.index(tx)}' +\
-                              f'/{len(listBankTx)})')
-                        
+                    else:
+                        msgCue.add(f'Searching...({listBankTx.index(tx)}' +\
+                              f'/{len(listBankTx)})', 'verbose')
             if not listBankTx:
-                if settings['verboseLvl'] >= 2:
-                    print('Txlist empty')
-                    break
-        if settings['verboseLvl'] >= 2:
-            print('Finished pre-check')
-            if settings['debug']:
-                input('continue...')
+                msgCue.add('Txlist empty', 'verbose')
+        msgCue.add('Finished pre-check', 'verbose')        
     
     pre_checker(listEntries, listBankTx)
     # Run once through list of BankTx
@@ -137,19 +133,12 @@ def check_Entries_vs_BankTx(listEntries, listBankTx):
         match len(foundMatches):
             # No match
             case 0:
-                if settings['verboseLvl'] >= 2:
-                    print(listBankTx[posListBankTx])
-                if settings['verboseLvl'] >= 1:
-                    print('No match found, skipped for now')
+                msgCue.add('No match found, skipped for now', 'status')
                 posListBankTx += 1
             # Single match
             case 1:
-                if settings['verboseLvl'] >= 2:
-                    print('Matched:\n', listBankTx[posListBankTx],
-                          '\nwith\n', 3 * ' ', foundMatches[0],
-                          sep='', end=f'\n{5 * "*"}\n')
-                elif settings['verboseLvl'] >= 1:
-                    print('Single match found, automatically processed.')
+                msgCue.add('Single match found, automatically processed.',
+                           'status')
                 foundMatches[0].ingest(listBankTx[posListBankTx])
                 listBankTx.pop(posListBankTx)
             # Multiple matches
@@ -176,13 +165,9 @@ def check_Entries_vs_BankTx(listEntries, listBankTx):
             leftoverEntries.append(entry)
     # Go through leftover Tx, process by hand
     while len(listBankTx) > 0:
-        if settings['verboseLvl'] >= 1:
-            print(f'{len(listBankTx)} Leftovers \n')
-        if settings['verboseLvl'] >= 2:    
-            print(listBankTx[0], '\n')
+        print(f'{len(listBankTx)} Leftovers \n')
         if len(leftoverEntries) > 0:
-            if settings['verboseLvl'] < 2:
-                print(listBankTx[0], '\n')
+            print(listBankTx[0], '\n')
             for entry in leftoverEntries:
                 print(f'({leftoverEntries.index(entry)}){entry}')
             print('\nAssociate number(default:0),','make (n)ew entry,',
@@ -191,10 +176,7 @@ def check_Entries_vs_BankTx(listEntries, listBankTx):
             print()
         else:
             choice = 'n'
-            if settings['verboseLvl'] >= 1:
-                print('No unchecked entries left, creating new')
-                if settings['debug']:
-                    input('continue...')
+            print('No unchecked entries left, creating new')
         if choice == '':
             choice = 0
         if choice == 'n':
@@ -210,17 +192,15 @@ def check_Entries_vs_BankTx(listEntries, listBankTx):
                 raise Exception('No Zahlungsbeteilugter, not Entgelt')
             activeList.entriesList.append(Entries(newBetrag, newName, newDate,
                                                   'c', newAssociatedTx))
-            if settings['verboseLvl'] >= 2:
-                print(f'Created new entry: \n{activeList.entriesList[-1]}')
+            msgCue.add(f'Created new entry: \n{activeList.entriesList[-1]}', 
+                       'verbose')
         elif choice == 's':
-            if settings['verboseLvl'] >= 2:
-                print('Popping without action')
+            msgCue.add('Popping without action', 'verbose')
         else:    
             leftoverEntries[int(choice)].ingest(listBankTx[0])
             leftoverEntries.pop(int(choice))
         listBankTx.pop(0)
-    if settings['verboseLvl'] >= 2:
-        print('All transactions processed!')
+    msgCue.add('All transactions processed!', 'status')
     
                     
 def valid_choice(*validInputs):
@@ -291,19 +271,17 @@ def load_config():
                 outsideDict = eval(header)
                 if key in outsideDict:
                     if outsideDict[key] != value:
-                        if settings['verboseLvl'] >= 2:
-                            print(f'{header}[{key}] was ',
-                                  f'{outsideDict[key]}',
-                                  f'({type(outsideDict[key])}), ',
-                                  f'is now {value}({type(value)})', sep='')
+                        msgCue.add(f'{header}[{key}] was ' + \
+                                   f'{outsideDict[key]}' + \
+                                   f'({type(outsideDict[key])}), ' + \
+                                   f'is now {value}({type(value)})', 'debug')
                         changed = True
                 else:
                     changed = True
                 outsideDict[key] = value
-            if settings['verboseLvl'] == 1 and changed == True:
-                print('Some settings have been changed from default')
-    input('continue...')
-
+            if changed == True:
+                msgCue.add('Some settings have been changed from default',
+                           'status')
 
 def fix_type(value):
     """Check whether value should be datetime, integer, float, or boolean,
@@ -323,8 +301,12 @@ def fix_type(value):
     return value
 
 
-def prep_menu():
+def prep_menu(msgWindowPosition=settings['maxWidthHeight'][1]-8):
     os.system('clear')
+    cursor.xy(msgWindowPosition)
+    msgCue.print_window(70, 7,
+                        border=settings['msgWindowSymbol'],
+                        printLevel=settings['verboseLvl'])
     if settings['platform'] == 'pc':
         draw_frame()
 
@@ -395,8 +377,7 @@ def menu_config(status='ok'):
                        + 'or blank to return:\n')
         if choice == 'sheetpath' or choice == 'sheetPath':
             BankTx.sheetPathSelector()
-            if settings['verboseLvl'] >= 1:
-                status = 'sheetPath set'
+            msgCue.add('sheetPath set', 'status')
         elif '=' in choice:
             key, value = choice.split('=')
             key, value = key.strip(), value.strip()
@@ -406,18 +387,13 @@ def menu_config(status='ok'):
                 settings[key] = value
             if key in recurring.keys():
                 recurring[key] = value
-            if settings['verboseLvl'] >= 2:
-                status = f'{key} set to {value}'
-            elif settings['verboseLvl'] >= 1:
-                status = f'{key} set'
+            msgCue.add(f'{key} set to {value}', 'status')
         elif choice == '':
             break
     # Save config(or not)
     if settings['keepSettings']:
         save_config(settings=settings, recurring=recurring)
-        if settings['verboseLvl'] >= 2:
-            input('Saved cfg to file_')
-
+        msgCue.add('Saved cfg to file')
 
 def menu_check():
     prep_menu()
@@ -624,8 +600,7 @@ class MonthList():
         elif listDate is not None and filePath is None:
             self.entriesList = self.prep_new_list(listDate)
             self.filePath = PATH + '/' + 'entriesList' + listDate + '.pkl'
-            if settings['verboseLvl'] >= 2:
-                print('New list created.')
+            msgCue.add('New list created.', 'status')
         # Load saved list
         elif listDate is None and filePath is not None:
             self.load()
@@ -634,12 +609,11 @@ class MonthList():
         check = MonthList.dictOfLists.setdefault(self.listDate, self)
         if check != self:
             # (2) Probably should handle this case in some way
-            print(f'There is already a list for {self.listDate}!', 
-                  f'Did not overwrite.')
-        elif settings['verboseLvl'] >= 1:
-            print(f'Successfully initialized list for {self.listDate}')
-        if settings['debug']:
-            input('continue...')
+            msgCue.add(f'There is already a list for {self.listDate}!' + 
+                  f'Did not overwrite.', 'warning', pause=True)
+        else:
+            msgCue.add(f'Successfully initialized list for {self.listDate}',
+                       'status')
         
     def __str__(self):
         month = months[self.listDate[-2:]]
@@ -729,8 +703,8 @@ class MonthList():
             if type(self.entriesList[0]) == Entry:
                 self.entriesList = self.Entry_to_Entries_migrator(
                     self.entriesList)
-                if settings['verboseLvl'] >= 1:
-                    print('Old list format detected, migrated to new.')
+                msgCue.add('Old list format detected, migrated to new.', 
+                           'warning')
                 self.save()
                 
             if self.filePath.endswith('bilanzListe.pkl'):
@@ -766,33 +740,19 @@ class MonthList():
                 updatedFilePath = PATH + '/entriesList' + date + '.pkl'
                 os.rename(self.filePath, updatedFilePath)
                 self.filePath = updatedFilePath
-                if settings['verboseLvl'] >= 1:
-                    print(f'New file path: {self.filePath}')
+                msgCue.add(f'New file path: {self.filePath}', 'status')
             
         with open(self.filePath, "rb") as file:
             self.entriesList = pickle.load(file)
         if self.filePath.endswith('bilanzListe.pkl') or type(
                 self.entriesList[0]) == Entry:
             legacy_load()
-        if settings['verboseLvl'] >= 1:
-            print('loaded.')
-        if settings['debug']:
-            input('continue...')
+        msgCue.add('loaded.', 'status')
             
     def save(self):
         with open(self.filePath, 'wb') as file:
             pickle.dump(self.entriesList, file)
-            if settings['verboseLvl'] >= 2:
-                if settings['debug']:
-                    print(f'Saved at {self.filePath}')
-                else:
-                    snippedPath = f'/{self.filePath.split("/")[-2]}/'+\
-                        f'{self.filePath.split("/")[-1]}'
-                    print(f'Saved at {snippedPath}')
-            elif settings['verboseLvl'] >= 1:
-                print('Saved.')
-            if settings['debug']:
-                input('continue...')
+            msgCue.add('Saved.', 'status')
                 
     def delete_entry(self, preChoice=None):
         if preChoice is None:
@@ -864,8 +824,7 @@ class Entries():
                 self.title = tx.name.split()[0]
             else:
                 self.title = tx.text
-        if settings['verboseLvl'] >= 2:
-            print(f'Successfully ingested: \n{3 * " "}{self}')
+        msgCue.add('Successfully ingested: \n{3 * " "}{self}', 'verbose')
             
     def edit(self):
         # (7) Incredibly sloppily done
@@ -985,8 +944,7 @@ class BankTx():
                     os.remove(PATH + '/' + item)    
         else:
             sheet = found[0]
-        if settings['verboseLvl'] >= 2:
-            print(f'Selected "{sheet}"')
+        msgCue.add(f'Selected "{sheet}"', 'verbose')
         return sheet
     
     @staticmethod
@@ -1018,33 +976,24 @@ class BankTx():
                 if settings['debug']:
                     print(thisTx)
                 if thisTxMonth > listMonth:
-                    if settings['verboseLvl'] >= 2:
-                        print('Tx month higher than list, skipped.')
+                    msgCue.add('Tx month higher than list, skipped.',
+                               'verbose')
                 elif thisTxMonth == listMonth:
                     txList.append(thisTx)
-                    if settings['verboseLvl'] >= 2:
-                        print(f'Valuta:{item["Valutadatum"][3:5]}, Monat:' +\
-                              f'{listMonth} -- Match appended.')
-                        if settings['debug']:
-                            input('continue...')
+                    msgCue.add(f'Valuta:{item["Valutadatum"][3:5]}, Monat:' +\
+                          f'{listMonth} -- Match appended.', 'verbose')
                 # If TxMonth < listMonth
                 else:
                     # Continue until Buergergeld for current month 
                     ## (which arrived last month), to demarcate turn of month
                     txList.append(thisTx)
-                    if settings['verboseLvl'] >= 2:
-                        print('Appended while looking for Buergergeld.')
-                        if settings['debug']:
-                            input('continue...')
+                    msgCue.add('Appended while looking for Buergergeld.', 
+                               'verbose')
                     if item['Name Zahlungsbeteiligter'].\
                             startswith('Bundesagentur fuer Arbeit'):
-                        if settings['verboseLvl'] >= 2:
-                            print('Buergergeld found, breaking.')
-                            if settings['debug']:
-                                input('continue...')
+                        msgCue.add('Buergergeld found, breaking.', 'verbose')
                         break
-        if settings['verboseLvl'] >= 1:
-                print(len(txList), 'transactions loaded.')
+        msgCue.add(f'{len(txList)} transactions loaded.', 'status')
         txList.reverse()
         return txList.copy()
                     
@@ -1066,7 +1015,7 @@ class BankTx():
 
 #%% Objects
 ###################################
-
+msgCue = MessageCue()
 #%%###########objcts###############
 
 
