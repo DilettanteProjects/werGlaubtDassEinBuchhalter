@@ -366,7 +366,7 @@ def menu_main(status='ok'):
     global activeList
     subMenus = {'save list'     : menu_save_list,
                'edit entry'     : menu_edit,
-               'delete entry'   : activeList.delete_entry,
+               'delete entry'   : delete_helper,
                'run check'      : menu_check,
                'config'         : menu_config,
                'manage lists'   : menu_file_master,
@@ -403,6 +403,12 @@ def menu_main(status='ok'):
             activeList.save()
             status = f'Saved({datetime.datetime.now().strftime("%H:%M")})'
         
+def delete_helper():
+    #(14) This is everything but elegant, had to do this workaround because
+    # putting activeList.delete_entry as dictionary value refs to activeList
+    #  at assignment and doesn't dynamically update.
+    activeList.delete_entry()
+
             
 def menu_config(status='ok'):
     while True:
