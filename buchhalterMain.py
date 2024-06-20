@@ -87,6 +87,25 @@ def increment_month(date):
     newDate = strYear + '-' + strMonth
     return newDate
 
+def decrement_month(date):
+    """Decrements the month of a datestring, recognizes turn of year"""
+    # Split date into integers
+    intYear = int(date[:4])
+    intMonth = int(date[-2:])
+    # Increment,  checking for turn of year
+    intMonth -= 1
+    if intMonth == 0:
+        intYear -= 1
+        intMonth = 12
+    # Turn back into datestring
+    if intMonth < 10:
+        strMonth = '0' + str(intMonth)
+    else:
+        strMonth = str(intMonth)
+    strYear = str(intYear)
+    newDate = strYear + '-' + strMonth
+    return newDate
+
 
 def check_Entries_vs_BankTx(listEntries, listBankTx):
     """Check the list of entries for correctness, making corrections where
@@ -345,12 +364,12 @@ def menu_main(status='ok'):
                     return subMenus[key]()
                 
     global activeList
-    subMenus = {'save list' : menu_save_list,
-               'edit entry' : menu_edit,
-               'delete entry' : activeList.delete_entry,
-               'run check' : menu_check,
-               'config' : menu_config,
-               'manage lists' : menu_file_master,
+    subMenus = {'save list'     : menu_save_list,
+               'edit entry'     : menu_edit,
+               'delete entry'   : activeList.delete_entry,
+               'run check'      : menu_check,
+               'config'         : menu_config,
+               'manage lists'   : menu_file_master,
                }
     while True:
         prep_menu()
@@ -363,8 +382,13 @@ def menu_main(status='ok'):
             print()
         choice = input()
         # Call submenus
-        if choice == '' or choice in [item[0] for item in subMenus.keys()]:
-            menu_select(choice)
+        if choice == '' or choice in [item[0] for item in subMenus.keys()] \
+                or choice in ['<', '>']:
+            #(13)This should not be a special case
+            if choice == '<' or choice == '>':
+                menu_file_master(preChoice=choice)
+            else:
+                menu_select(choice)
         # Add entry to active list
         elif choice.split(maxsplit=1)[0].translate(
                 str.maketrans('', '', '-.p')).isnumeric():
@@ -456,7 +480,7 @@ def menu_save_list():
     input('Save successful._')
 
 
-def menu_file_master(autoLoad=False):
+def menu_file_master(autoLoad=False, preChoice=''):
     """Does everything relating to the list files(except save)"""
     global activeList
     
@@ -569,15 +593,40 @@ def menu_file_master(autoLoad=False):
             if not activeList:
                 print('No active list selected!')
             print()
-            choice = input('Enter\n(number) to load list from files,\n'+\
-                           '(a) for all,\n'+\
-                           '(>number) to select active list from loaded,\n'+\
-                           '(n) to create new list, or'+\
-                           '\n(blank) to continue: ')
+            # User input(or not)
+            if preChoice == '':
+                choice = input(
+                        'Enter\n(number) to load list from files,\n'+\
+                        '(a) for all,\n'+\
+                        '(>number) to select active list from loaded,\n'+\
+                        '(n) to create new list,\n'+\
+                        '(</>) for quickswitch next/previous month, or'+\
+                        '\n(blank) to continue: ')
+            else:
+                choice = preChoice
+                preChoice = ''
+            #(12) Would this look more concise as a match-case?
             # Load all
             if choice == 'a':
                 for item in fileList:
                     MonthList(filePath=PATH + '/' + item)
+            # Quickswitch
+            elif choice == '<' or choice == '>':
+                if choice == '<':
+                    targetMonth = decrement_month(activeList.listDate)
+                else:
+                    targetMonth = increment_month(activeList.listDate)
+                # Check in loaded lists
+                if targetMonth in MonthList.dictOfLists:
+                    activeList = MonthList.dictOfLists[targetMonth]
+                # Else check list files
+                elif f'entriesList{targetMonth}.pkl' in fileList:
+                    activeList = MonthList(filePath=PATH + '/' + 
+                                           f'entriesList{targetMonth}.pkl')
+                # Doesn't exist? Make new
+                else:
+                    activeList = MonthList(listDate=targetMonth)
+                break
             # Choose active
             elif choice.startswith('>') and int(choice[1:]) in\
                     range(len(MonthList.dictOfLists.values())):
