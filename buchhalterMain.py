@@ -698,8 +698,12 @@ class MonthList():
         
     def __str__(self):
         month = months[self.listDate[-2:]]
+        amountNotYetChecked = 0
+        for entry in self.entriesList:
+            if entry.status != 'c' and entry.status != 'm':
+                amountNotYetChecked += 1
         return f'List for {self.listDate} ({month}), {len(self.entriesList)}' +\
-                f' Entries'
+                f' Entries, {amountNotYetChecked} unchecked or placeholder'
     
     def print_list(self, printIndex=False, printSum=False):
         sumOfAmounts = 0
@@ -896,7 +900,9 @@ class Entries():
         self.amount = amount
         self.title = title
         self.date = date
-        self.status = status    # (u)nconfirmed / (c)hecked / (p)laceholder
+        self.status = status
+        # status should be:
+        #  (u)nconfirmed / (c)hecked / (p)laceholder / (m)anually checked
         self.associatedTx = associatedTx   
         
     def __str__(self):
@@ -948,7 +954,9 @@ class Entry():
     def __init__(self, amount, date=datetime.date.today(), status='u'):
         self.amount = amount
         self.date = date
-        self.status = status    # (u)nconfirmed / (c)hecked / (p)laceholder
+        self.status = status    
+        # status should be:
+        #  (u)nconfirmed / (c)hecked / (p)laceholder / (m)anually checked
         self.associatedBuchung = None
         
         
