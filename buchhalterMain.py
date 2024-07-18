@@ -1099,8 +1099,9 @@ class BankTx():
                         print('Appended while looking for Buergergeld.')
                         if settings['debug']:
                             input('continue...')
+                    # (15) This is weak-ass confirmation, check more robustly
                     if item['Name Zahlungsbeteiligter'].\
-                            startswith('Bundesagentur fuer Arbeit'):
+                            startswith('Bundesagentur'):
                         if settings['verboseLvl'] >= 2:
                             print('Buergergeld found, breaking.')
                             if settings['debug']:
